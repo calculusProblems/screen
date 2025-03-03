@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Remote Webpage Viewer</title>
+    <style>
+        body { text-align: center; background: black; color: white; }
+        canvas { background: white; cursor: pointer; }
+        input { margin-top: 10px; padding: 5px; }
+    </style>
+</head>
+<body>
+    <h2>Remote Webpage Viewer</h2>
+    <canvas id="screen"></canvas>
+    <br>
+    <input type="text" id="urlInput" placeholder="Enter URL and press Enter">
+    <button onclick="navigate()">Go</button>
+
+    <script>
+        const ws = new WebSocket("wss://" + location.host);
+        const canvas = document.getElementById("screen");
+        const ctx = canvas.getContext("2d");
+        let serverWidth = 1920, serverHeight = 1080;
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth * 0.95;
+            canvas.height = window.innerHeight * 0.95;
+        }
+
+        resizeCanvas();
+        window.addEventListener("resize", resizeCanvas);
+
+        function navigate() {
+            const url = document.getElementById("urlInput").value;
+            ws.send(JSON.stringify({ type: "navigate", url }));
+            document.getElementById("urlInput").value = "";
+        }
+
+        ws.onmessage = (event) => {
+            const blob = event.data;
+            const img = new Image();
+            img.src = URL.createObjectURL(blob);
+            img.onload = () => {
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                URL.revokeObjectURL(img.src);
+            };
+        };
+
+        canvas.addEventListener("click", (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = serverWidth / canvas.width;
+            const scaleY = serverHeight / canvas.height;
+            const x = Math.round((e.clientX - rect.left) * scaleX);
+            const y = Math.round((e.clientY - rect.top) * scaleY);
+
+            ws.send(JSON.stringify({ type: "mousemove", x, y }));
+            setTimeout(() => {
+                ws.send(JSON.stringify({ type: "click", x, y }));
+            }, 50);
+        });
+
+        document.addEventListener("keydown", (e) => {
+            // If it's a printable character, send it directly
+            if (e.key.length === 1) {
+                ws.send(JSON.stringify({ type: "type", text: e.key }));
+            } else {
+                ws.send(JSON.stringify({ type: "key", code: e.code }));
+            }
+        });
+
+        document.addEventListener("wheel", (e) => {
+            ws.send(JSON.stringify({ type: "scroll", deltaY: e.deltaY }));
+        });
+    </script>
+</body>
+</html>
